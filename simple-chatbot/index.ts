@@ -14,9 +14,7 @@ const model = new ChatOpenAI({
 });
 
 app.get("/", async (req: Request, res: Response) => {
-  const response = await model.call([
-    new HumanMessage("Dime como te llamas?")
-  ]);
+  const response = await model.call([new HumanMessage("Dime como te llamas?")]);
   res.send(response.content);
 });
 
