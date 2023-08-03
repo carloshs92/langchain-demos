@@ -12,7 +12,7 @@ dotenv.config();
 const app: Express = express();
 const port = process.env.PORT;
 
-const indexDocs = async () => {
+const createIndex = async () => {
   // Leer el documento
   const loader = new TextLoader("./document.txt");
   const docs = await loader.load();
@@ -30,7 +30,7 @@ const indexDocs = async () => {
   return "indexed.!";
 };
 
-const queryDocs = async () => {
+const getAnswer = async () => {
   // Initialize the LLM to use for answering the question.
   const model = new OpenAI({
     temperature: 0.9,
@@ -57,18 +57,18 @@ const queryDocs = async () => {
   });
 
   // Realizar una pregunta a la cadena
-  const response = await chain.call({ query: "¿Quien es Axel?" });
+  const response = await chain.call({ query: "¿Quien es Carlos?" });
 
   return response.text;
 };
 
 app.get("/", async (req: Request, res: Response) => {
-  const response = await queryDocs();
+  const response = await getAnswer();
   res.send(response);
 });
 
 app.get("/index-docs", async (req: Request, res: Response) => {
-  const response = await indexDocs();
+  const response = await createIndex();
   res.send(response);
 });
 

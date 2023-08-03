@@ -39,7 +39,6 @@ app.get("/", async (req: Request, res: Response) => {
     llm: model,
     prompt: chatPrompt,
   });
-  // Las variables indicadas en "{}" se agregan como parámetros en el método call
   const result = await chain.call({
     input_language: "Español",
     output_language: "Italiano",
