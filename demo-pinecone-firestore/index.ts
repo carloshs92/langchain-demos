@@ -5,6 +5,7 @@ import { ChatOpenAI } from "langchain/chat_models/openai";
 import { PineconeClient } from "@pinecone-database/pinecone";
 import { PineconeStore } from "langchain/vectorstores/pinecone";
 import { OpenAIEmbeddings } from "langchain/embeddings/openai";
+import { FirestoreChatMessageHistory } from "langchain/stores/message/firestore";
 import { NotionAPILoader } from "langchain/document_loaders/web/notionapi";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { LLMChain } from "langchain/chains";
@@ -20,12 +21,16 @@ dotenv.config();
 const app: Express = express();
 const port = process.env.PORT;
 
-const createBufferMemory = async () => {
+const getConversation = async () => {
   const memory = new BufferMemory({
     memoryKey: "history_current",
+    chatHistory: new FirestoreChatMessageHistory({
+      collectionName: "langchain",
+      sessionId: "lc-example",
+      userId: "a@example.com",
+      config: { projectId: "your-project-id" },
+    }),
   });
-  await memory.chatHistory.addUserMessage("Me llamo Carlos");
-  await memory.chatHistory.addAIChatMessage("Mucho gusto");
   return memory;
 };
 
@@ -43,38 +48,16 @@ const getDocuments = async (id: string) => {
   return pageDocs;
 };
 
-const getInstructions = async () => {
-  const notion = new Client({
-    auth: process.env.NOTION_API_KEY,
-  });
-
-  const notionPages: any = await notion.blocks.children.list({
-    block_id: process.env.NOTION_INSTRUCTIONS_ID || "",
-  });
-
-  const text = notionPages.results
-    ?.map((block: any) => {
-      let paragraph = "";
-      if (block.type === "paragraph") {
-        paragraph = block?.paragraph?.rich_text
-          .map((rt: any) => rt.plain_text)
-          .join("\n");
-      }
-      return paragraph;
-    })
-    .join("\n\n");
-
-  return text;
-};
-
 const queryVector = async () => {
   // Buscar el vector
   const client = new PineconeClient();
   await client.init({
     apiKey: process.env.PINECONE_API_KEY || "",
-    environment: process.env.PINECONE_ENVIRONMENT || "",
+    environment: process.env.PINECONE_ENVIRONMENT_ONBOARDING || "",
   });
-  const pineconeIndex = client.Index(process.env.PINECONE_INDEX || "");
+  const pineconeIndex = client.Index(
+    process.env.PINECONE_INDEX_ONBOARDING || ""
+  );
 
   const vectorStore = await PineconeStore.fromExistingIndex(
     new OpenAIEmbeddings(),
@@ -90,16 +73,20 @@ const createIndex = async () => {
   });
 
   // Leer el documento
-  const docs = await getDocuments(process.env.NOTION_DOCUMENTS_ID || "");
+  const docs = await getDocuments(
+    process.env.NOTION_ONBOARDING_DOCUMENTS_ID || ""
+  );
   const text = await textSplitter.splitDocuments(docs);
 
   // Crear un vector a partir del documento
   const client = new PineconeClient();
   await client.init({
     apiKey: process.env.PINECONE_API_KEY || "",
-    environment: process.env.PINECONE_ENVIRONMENT || "",
+    environment: process.env.PINECONE_ENVIRONMENT_ONBOARDING || "",
   });
-  const pineconeIndex = client.Index(process.env.PINECONE_INDEX || "");
+  const pineconeIndex = client.Index(
+    process.env.PINECONE_INDEX_ONBOARDING || ""
+  );
   await PineconeStore.fromDocuments(text, new OpenAIEmbeddings(), {
     pineconeIndex,
   });
@@ -113,26 +100,18 @@ const getAnswer = async () => {
     openAIApiKey: process.env.OPENAI_API_KEY,
   });
 
-  // Load documents
-  const instruction = await getInstructions();
-
   // Obtener vector
   const retriever = await queryVector();
 
   // Buscar conversaciones
-  const memory = new VectorStoreRetrieverMemory({
+  const memoryVector = new VectorStoreRetrieverMemory({
     vectorStoreRetriever: retriever,
-    memoryKey: "history_initial",
   });
 
-  await memory.saveContext({ input: instruction }, { output: "Esta bien" });
-  const conversationFromDB = await createBufferMemory();
+  const memoryConversation = await getConversation();
 
   // Crear estructura del prompt
   const prompt = PromptTemplate.fromTemplate(`
-    Conversación inicial:
-    {history_initial}
-
     Conversación actual:
     {history_current}
 
@@ -145,7 +124,7 @@ const getAnswer = async () => {
     llm: model,
     prompt,
     memory: new CombinedMemory({
-      memories: [conversationFromDB, memory],
+      memories: [memoryVector, memoryConversation],
     }),
   });
 
