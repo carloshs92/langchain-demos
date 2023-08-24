@@ -1,6 +1,5 @@
 import express, { Express, Request, Response } from "express";
 import dotenv from "dotenv";
-import { Client } from "@notionhq/client";
 import { ChatOpenAI } from "langchain/chat_models/openai";
 import { PineconeClient } from "@pinecone-database/pinecone";
 import { PineconeStore } from "langchain/vectorstores/pinecone";
@@ -15,25 +14,56 @@ import {
   VectorStoreRetrieverMemory,
 } from "langchain/memory";
 import { PromptTemplate } from "langchain/prompts";
+import { initializeApp, cert } from "firebase-admin/app";
 
 dotenv.config();
 
 const app: Express = express();
 const port = process.env.PORT;
 
+// Initialize Firebase
+const serviceAccount = require("./serviceAccountKey.json");
+initializeApp({
+  credential: cert(serviceAccount),
+});
+
+// Construimos una conversacion previa
+const previousConversation = () => {
+  const chatHistory = new FirestoreChatMessageHistory({
+    collectionName: "langchain",
+    sessionId: "session user 3",
+    userId: "id user 3",
+    config: serviceAccount,
+  });
+  chatHistory.addUserMessage(
+    "Hola, mi nombre es Carlos Huamani y soy un programador informático"
+  );
+  chatHistory.addAIChatMessage(
+    "Hola, mucho gusto en conocerte. Yo soy una inteligencia artificial"
+  );
+  chatHistory.addUserMessage(
+    "Yo tengo 31 años y me gusta programar en JavaScript"
+  );
+  chatHistory.addAIChatMessage("Yo tengo 1 año y me gusta programar en Python");
+};
+
+// Logica para conseguir la conversacion previa
 const getConversation = async () => {
+  const chatHistory = new FirestoreChatMessageHistory({
+    collectionName: "langchain",
+    sessionId: "session user 3",
+    userId: "id user 3",
+    config: serviceAccount,
+  });
+
   const memory = new BufferMemory({
     memoryKey: "history_current",
-    chatHistory: new FirestoreChatMessageHistory({
-      collectionName: "langchain",
-      sessionId: "lc-example",
-      userId: "a@example.com",
-      config: { projectId: "your-project-id" },
-    }),
+    chatHistory,
   });
   return memory;
 };
 
+// Logica para conseguir los documentos
 const getDocuments = async (id: string) => {
   const pageLoader = new NotionAPILoader({
     clientOptions: {
@@ -48,16 +78,15 @@ const getDocuments = async (id: string) => {
   return pageDocs;
 };
 
+// Logica para conseguir el vector
 const queryVector = async () => {
   // Buscar el vector
   const client = new PineconeClient();
   await client.init({
     apiKey: process.env.PINECONE_API_KEY || "",
-    environment: process.env.PINECONE_ENVIRONMENT_ONBOARDING || "",
+    environment: process.env.PINECONE_ENVIRONMENT || "",
   });
-  const pineconeIndex = client.Index(
-    process.env.PINECONE_INDEX_ONBOARDING || ""
-  );
+  const pineconeIndex = client.Index(process.env.PINECONE_INDEX || "");
 
   const vectorStore = await PineconeStore.fromExistingIndex(
     new OpenAIEmbeddings(),
@@ -66,6 +95,7 @@ const queryVector = async () => {
   return vectorStore.asRetriever(10);
 };
 
+// Logica para crear el indice
 const createIndex = async () => {
   // Crate text splitter
   const textSplitter = new RecursiveCharacterTextSplitter({
@@ -73,20 +103,16 @@ const createIndex = async () => {
   });
 
   // Leer el documento
-  const docs = await getDocuments(
-    process.env.NOTION_ONBOARDING_DOCUMENTS_ID || ""
-  );
+  const docs = await getDocuments(process.env.NOTION_DOCUMENTS_ID || "");
   const text = await textSplitter.splitDocuments(docs);
 
   // Crear un vector a partir del documento
   const client = new PineconeClient();
   await client.init({
     apiKey: process.env.PINECONE_API_KEY || "",
-    environment: process.env.PINECONE_ENVIRONMENT_ONBOARDING || "",
+    environment: process.env.PINECONE_ENVIRONMENT || "",
   });
-  const pineconeIndex = client.Index(
-    process.env.PINECONE_INDEX_ONBOARDING || ""
-  );
+  const pineconeIndex = client.Index(process.env.PINECONE_INDEX || "");
   await PineconeStore.fromDocuments(text, new OpenAIEmbeddings(), {
     pineconeIndex,
   });
@@ -124,13 +150,15 @@ const getAnswer = async () => {
     llm: model,
     prompt,
     memory: new CombinedMemory({
-      memories: [memoryVector, memoryConversation],
+      memories: memoryConversation
+        ? [memoryVector, memoryConversation]
+        : [memoryVector],
     }),
   });
 
   // Ejecutar el chain
   const res = await chain.call({
-    input: "Quien es Carlos Huamani?",
+    input: "Cual es mi nomnbre?",
   });
   return res.text;
 };
@@ -138,6 +166,11 @@ const getAnswer = async () => {
 app.get("/", async (req: Request, res: Response) => {
   const response = await getAnswer();
   res.send(response);
+});
+
+app.get("/previous-conversation", async (req: Request, res: Response) => {
+  await previousConversation();
+  res.send("success");
 });
 
 app.get("/index-docs", async (req: Request, res: Response) => {
