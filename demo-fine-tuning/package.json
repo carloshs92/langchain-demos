@@ -1,0 +1,26 @@
+{
+  "name": "demo-fine-tuning",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "npx tsc",
+    "upload": "action=upload node dist/index.js",
+    "create": "action=create node dist/index.js",
+    "retrieve": "action=retrieve node dist/index.js",
+    "ask": "action=ask node dist/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "langchain": "^0.0.132",
+    "openai": "^4.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.4.2",
+    "typescript": "^5.1.6"
+  }
+}
